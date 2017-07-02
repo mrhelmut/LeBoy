@@ -817,6 +817,7 @@ namespace LeBoyLib
             }
 
             LCD_Step();
+            Sound_Step();
 
             // TIMERS
             byte timerState = Memory[0xFF07];

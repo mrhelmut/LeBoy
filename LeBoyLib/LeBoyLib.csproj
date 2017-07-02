@@ -39,6 +39,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CPU\GBZ80.LCD.cs" />
+    <Compile Include="CPU\GBZ80.Sound.cs" />
     <Compile Include="Memory\GBMemory.cs" />
     <Compile Include="CPU\GBZ80.cs" />
     <Compile Include="CPU\GBZ80.Debug.cs" />
