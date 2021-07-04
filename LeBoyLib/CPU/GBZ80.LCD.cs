@@ -140,7 +140,7 @@ namespace LeBoyLib
 
                             // render buffer
                             if (LCDLY < 144)
-                                RenderScreenBuffer(LCDLY);
+                                RenderScanline(LCDLY);
                         }
                         break;
                 }
@@ -182,7 +182,7 @@ namespace LeBoyLib
         /// <summary>
         /// Emulates the LCD controller rendering and output the results to ScreenBuffer (BGRA coded on 4 bytes)
         /// </summary>
-        private void RenderScreenBuffer(int scanline)
+        private void RenderScanline(int scanline)
         {
             // control states
             /*
@@ -235,8 +235,7 @@ namespace LeBoyLib
             byte WinY = Memory[0xFF4A];
             byte WinX = (byte)(Memory[0xFF4B] - 7);
 
-            //for (int y = 0; y < 144; y++)
-            {
+            { // scope y
                 int y = scanline;
                 for (int x = 0; x < 160; x++)
                 {
