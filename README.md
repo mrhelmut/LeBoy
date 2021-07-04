@@ -13,31 +13,16 @@ LeBoy is not meant for accuracy or speed. It is an educational project with a fo
 What's missing and known issues
 -------------
 
-LeBoy is not yet complete. Here's what's missing:
+LeBoy is not yet complete. Here's what's currently missing:
 
-- *Sound*: it currently doesn't generate sound;
-- *Real time clock (RTC)*: clock support is absent and queries to clock registers will return 0;
-- *GBC & SGB*: only the base GB (DMG) is fully supported;
-- *Some Memory Bank Controllers (MBCs)*: only MBC1, MBC2, MBC3, and MC5 are supported (without RTC support).
+- *Sound* is not implemented yet;
+- *Real time clock (RTC)* support is absent and queries to clock registers will return 0;
+- *GBC and SGB* are not supported, only the base GB (DMG) is fully supported (which is the priority of the project);
+- *Memory Bank Controllers (MBCs)* are partially implemented (only MBC1, MBC2, MBC3, and MC5 are supported, without RTC support).
 
 Known issues:
 
-- *OAM priority and read/write*: OAM emulation is not quite accurate yet, some sprites have wrong priorities and this may result in sprites not displaying, or being displayed above/under other elements.
-
-----------
-
-Future plans
--------------
-
-LeBoy is not yet complete. Here's what's missing:
-
-- Fixing any rendering issues;
-- Implementing sound;
-- Implementing missing MBCs;
-- Refactoring *GBMemory* and optimize memory read/write to enhance performance;
-- Refactoring the LCD controller emulation to be less hacky and faster;
-
-GBC and SGB support are not a priority for now.
+- *OAM priority and read/write*: OAM emulation is not quite accurate, some sprites have wrong priorities and this may result in sprites not displaying, or being displayed above/under other elements.
 
 ----------
 

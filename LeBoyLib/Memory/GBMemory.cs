@@ -139,172 +139,181 @@ namespace LeBoyLib
                 //    IsInBIOS = false;
                 //if (IsInBIOS && address < 0x0100)
                 //    return BIOS[address];
-                if (address < 0x8000)
+                switch (address)
                 {
-                    if (address < 0x4000)
+                    case int n when (n < 0x4000):
                         return RomBanks[0][address];
-                    else
-                        return RomBanks[CurrentROMBank][address - 0x4000];                    
-                }
-                else if (address >= 0xA000 && address < 0xC000)
-                {
-                    if (MBC == MemoryBankControllerType.MBC1 || MBC == MemoryBankControllerType.MBC2)
-                    {
-                        return RamBanks[CurrentRAMBank][address - 0xA000];
-                    }
-                    else if (MBC == MemoryBankControllerType.MBC3)
-                    {
-                        if (AccessingRam)
-                            return RamBanks[CurrentRAMBank][address - 0xA000];
-                        else
+                    case int n when (n < 0x8000):
+                        return RomBanks[CurrentROMBank][address - 0x4000];
+                    case int n when (n >= 0xA000 && n < 0xC000):
+                        switch (MBC)
                         {
-                            // RTC register
-                            return 0;
+                            case MemoryBankControllerType.MBC1:
+                            case MemoryBankControllerType.MBC2:
+                                return RamBanks[CurrentRAMBank][address - 0xA000];
+                            case MemoryBankControllerType.MBC3:
+                                if (AccessingRam)
+                                    return RamBanks[CurrentRAMBank][address - 0xA000];
+                                else
+                                {
+                                    // RTC register
+                                    return 0;
+                                }
                         }
-                    }
+                        break;
                 }
-                return Memory[address]; 
+                return Memory[address];
             }
+
             set
             {
-                if (address < 0x8000) // MBC operations, should not alter memory
+                switch (address)
                 {
                     // 0000-1FFF - RAM Enable (Write Only)
                     // Writing to this space is used to enable/disable RAM writing, because it is safer to disable it if not accessing it
                     // For an emulator, we don't really need to keep track of the RAM read/write states
 
-                    if (address >= 0x2000 && address < 0x4000) // 2000-3FFF - ROM Bank Number (Write Only)
-                    {
-                        if (MBC == MemoryBankControllerType.MBC1)
+                    case int n when (n >= 0x2000 && n < 0x4000): // 2000-3FFF - ROM Bank Number (Write Only)
+                        switch (MBC)
                         {
-                            int bank = value & 0x1F;  // clear lower bits
-                            CurrentROMBank &= 0xE0; // clear upper bits
-                            CurrentROMBank = (byte)(CurrentROMBank | bank);
+                            case MemoryBankControllerType.MBC1:
+                                int bank1 = value & 0x1F;  // clear lower bits
+                                CurrentROMBank &= 0xE0; // clear upper bits
+                                CurrentROMBank = (byte)(CurrentROMBank | bank1);
 
-                            // adjust if 0
-                            if (CurrentROMBank == 0)
-                                CurrentROMBank++;
+                                // adjust if 0
+                                if (CurrentROMBank == 0)
+                                    CurrentROMBank++;
+                                return;
+                            case MemoryBankControllerType.MBC2:
+                                int bank2 = value & 0xFF;
+                                //if ((value & 0x0100) != 0)
+                                CurrentROMBank = bank2;
+                                if (CurrentROMBank == 0)
+                                    CurrentROMBank++;
+                                return;
+                            case MemoryBankControllerType.MBC3:
+                                int bank3 = value & 0x7F;
+                                //if ((value & 0x0100) != 0)
+                                CurrentROMBank = bank3;
+                                if (CurrentROMBank == 0)
+                                    CurrentROMBank++;
+                                return;
+                            case MemoryBankControllerType.MBC5:
+                                // not fully implemented
+                                if (address < 0x3000)
+                                {
+                                    int bank5 = (CurrentROMBank & 0xFF00) | value;
+                                }
+                                else
+                                {
+                                    int bank5 = value;
+                                    bank5 = (CurrentROMBank & 0xFF) | (bank5 << 4);
+                                }
+                                return;
+
                         }
-                        else if (MBC == MemoryBankControllerType.MBC2)
+                        return;
+
+                    case int n when (n >= 0x4000 && n < 0x6000): // 4000-5FFF - RAM Bank Number - or - Upper Bits of ROM Bank Number (Write Only)
+                        switch (MBC)
                         {
-                            int bank = value & 0xFF;
-                            //if ((value & 0x0100) != 0)
-                            CurrentROMBank = bank;
-                            if (CurrentROMBank == 0)
-                                CurrentROMBank++;
+                            // MBC1 only
+                            case MemoryBankControllerType.MBC1:
+                            case MemoryBankControllerType.MBC2:
+                                value &= 0x3; // keep only 2 bits
+
+                                if (AccessingRam)
+                                    CurrentRAMBank = value;
+                                else
+                                {
+                                    //if (value == 0)
+                                    //    value = 1;
+                                    CurrentROMBank &= 0x1F; // clear lower bits                            
+                                    CurrentROMBank |= value << 5;
+                                }
+                                return;
+                            case MemoryBankControllerType.MBC3:
+                            case MemoryBankControllerType.MBC5:
+                                int bank = value & 0x3; // keep only 2 bits
+                                int rtc = value & 0xC;
+                                if (bank > 0)
+                                {
+                                    AccessingRam = true;
+                                    CurrentRAMBank = bank;
+                                }
+                                else if (rtc > 0)
+                                {
+                                    AccessingRam = true;
+                                    CurrentRTCRegister = rtc;
+                                }
+                                return;
                         }
-                        else if (MBC == MemoryBankControllerType.MBC3)
-                        {
-                            int bank = value & 0x7F;
-                            //if ((value & 0x0100) != 0)
-                            CurrentROMBank = bank;
-                            if (CurrentROMBank == 0)
-                                CurrentROMBank++;
-                        }
-                        else if (MBC == MemoryBankControllerType.MBC5)
-                        {
-                            if (address < 0x3000)
-                            {
-                                int bank = (CurrentROMBank & 0xFF00) | value;
-                            }
-                            else
-                            {
-                                int bank = value;
-                                bank = (CurrentROMBank & 0xFF) | (bank << 4);
-                            }
-                        }
-                    }
-                    else if (address >= 0x4000 && address < 0x6000) // 4000-5FFF - RAM Bank Number - or - Upper Bits of ROM Bank Number (Write Only)
-                    {
+
+                        return;
+
+                    case int n when (n >= 0x6000 && n < 0x8000): // 6000-7FFF - ROM/RAM Mode Select (Write Only)
                         // MBC1 only
-                        if (MBC == MemoryBankControllerType.MBC1 || MBC == MemoryBankControllerType.MBC2)
-                        {
-                            value &= 0x3; // keep only 2 bits
+                        AccessingRam = (value & 0x01) == 0x01;
+                        return;
 
-                            if (AccessingRam)
-                                CurrentRAMBank = value;
-                            else
-                            {
-                                //if (value == 0)
-                                //    value = 1;
-                                CurrentROMBank &= 0x1F; // clear lower bits                            
-                                CurrentROMBank |= value << 5;
-                            }
-                        }
-                        else if (MBC == MemoryBankControllerType.MBC3 || MBC == MemoryBankControllerType.MBC5)
+                    case int n when (n >= 0xA000 && n < 0xC000): // A000-BFFF - RAM Bank 00-03, if any (Read/Write)
+                        switch (MBC)
                         {
-                            int bank = value & 0x3; // keep only 2 bits
-                            int rtc = value & 0xC;
-                            if (bank > 0)
-                            {
-                                AccessingRam = true;
-                                CurrentRAMBank = bank;
-                            }
-                            else if (rtc > 0)
-                            {
-                                AccessingRam = true;
-                                CurrentRTCRegister = rtc;
-                            }
+                            case MemoryBankControllerType.MBC1:
+                            case MemoryBankControllerType.MBC2:
+                            case MemoryBankControllerType.MBC5:
+                                RamBanks[CurrentRAMBank][address - 40960] = value;
+                                return;
+                            case MemoryBankControllerType.MBC3:
+                                if (AccessingRam)
+                                {
+                                    RamBanks[CurrentRAMBank][address - 40960] = value;
+                                }
+                                else
+                                {
+                                    // RTC registers
+                                }
+                                return;
                         }
-                    }
-                    else if (address >= 0x6000 && address < 0x8000) // 6000-7FFF - ROM/RAM Mode Select (Write Only)
-                    {
-                        // MBC1 only
-                        AccessingRam = (value & 0x01) == 0x01;                            
-                    }
+                        return;
 
-                }
-                else if (address >= 0xA000 && address < 0xC000) // A000-BFFF - RAM Bank 00-03, if any (Read/Write)
-                {
-                    if (MBC == MemoryBankControllerType.MBC1 || MBC == MemoryBankControllerType.MBC2 || MBC == MemoryBankControllerType.MBC5)
-                    {
-                        RamBanks[CurrentRAMBank][address - 40960] = value;
-                    }
-                    else if (MBC == MemoryBankControllerType.MBC3)
-                    {
-                        if (AccessingRam)
+                    case 0xFF04: // DIV register, reset if written to
+                        Memory[address] = 0;
+                        return;
+
+                    case 0xFF00: // I/O gamepad has 4 read-only bits
+                        Memory[0xFF00] = (byte)((value & 0xF0) | (Memory[0xFF00] & 0x0F));
+                        return;
+
+                    case 0xFF46: // DMA Transfer
+                        if (value <= 0xF1)
                         {
-                            RamBanks[CurrentRAMBank][address - 40960] = value;
+                            int startAddr = value * 0x100;
+                            for (int i = 0xFE00; i <= 0xFE9F; i++)
+                            {
+                                if (startAddr < 0x4000)
+                                {
+                                    Memory[i] = RomBanks[0][startAddr];
+                                }
+                                else if (startAddr < 0x8000)
+                                {
+                                    Memory[i] = RomBanks[CurrentROMBank][address - 0x4000];
+                                }
+                                else if (address >= 0xA000 && address < 0xC000)
+                                    Memory[i] = RomBanks[CurrentRAMBank][startAddr];
+                                else
+                                    Memory[i] = Memory[startAddr];
+                                startAddr++;
+                            }
                         }
-                        else
-                        {
-                            // RTC registers
-                        }
-                    }
+                        return;
                 }
-                else if (address == 0xFF04) // DIV register, reset if written to
-                    Memory[address] = 0;
-                else if (address == 0xFF00) // I/O gamepad has 4 read-only bits
-                {
-                    Memory[0xFF00] = (byte)((value & 0xF0) | (Memory[0xFF00] & 0x0F));
-                }
-                else if (address == 0xFF46 && value <= 0xF1) // DMA Transfer
-                {
-                    int startAddr = value * 0x100;
-                    for (int i = 0xFE00; i <= 0xFE9F; i++)
-                    {
-                        if (startAddr < 0x4000)
-                        {
-                            Memory[i] = RomBanks[0][startAddr];
-                        }
-                        else if (startAddr < 0x8000)
-                        {
-                            Memory[i] = RomBanks[CurrentROMBank][address - 0x4000];
-                        }
-                        else if (address >= 0xA000 && address < 0xC000)
-                            Memory[i] = RomBanks[CurrentRAMBank][startAddr];
-                        else
-                            Memory[i] = Memory[startAddr];
-                        startAddr++;
-                    }
-                }
-                else
-                {
-                    Memory[address] = value;
-                    // ECHO memory
-                    if (address >= 0xC000 && address <= 0xDDFF)
-                        Memory[address + 0x2000] = value;
-                }
+
+                Memory[address] = value;
+                // ECHO memory
+                if (address >= 0xC000 && address <= 0xDDFF)
+                    Memory[address + 0x2000] = value;
             }
         }
 
