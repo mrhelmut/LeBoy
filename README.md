@@ -44,30 +44,24 @@ Initializing and loading a ROM:
 
 ```csharp
 GBZ80 emulator = new GBZ80();
-    
-// loading a rom into a byte[]
-using (FileStream fs = new FileStream("MyRomFile.gb", FileMode.Open))
-{
-    using (BinaryReader br = new BinaryReader(fs))
-    {
-        byte[] rom = new byte[fs.Length];
-        for (int i = 0; i < fs.Length; i++)
-            rom[i] = br.ReadByte();
-        // loading the rom
-        emulator.Load(rom);
-    }
-}
+
+// Loading a rom into a byte[]
+byte[] rom = System.IO.File.ReadAllBytes("MyRomFile.gb");
+
+// Loading the rom
+emulator.Load(rom);
 ```
 
 Executing the emulation:
 
 ```csharp
-// better to run this from a thread
+// suggesting that this part runs from a thread
 while(true)
 {
-    // DecodeAndDispatch emulates the next CPU instruction
-    // it returns the number of CPU cycles that have been used
+    // DecodeAndDispatch emulates the next CPU instruction.
+    // It returns the number of CPU cycles that have been used
     // and you can use GBZ80.ClockSpeed to synchronize the emulation speed
+    // with the host CPU speed (this example runs uncapped emulation speed).
     emulator.DecodeAndDispatch();
 }
 ```
@@ -75,16 +69,16 @@ while(true)
 Getting the backbuffer:
 
 ```csharp
-// this returns a 32bit BGRA (1 byte per component) encoded byte[] of the full 160x144 GB display
-// the first pixel is the leftmost top pixel and it goes line by line
+// This returns a 32bit BGRA (1 byte per component) encoded byte[] of the full 160x144 GB display.
+// The first pixel is the leftmost top pixel and it continues line by line.
 byte[] backbuffer = emulator.GetScreenBuffer();
 ```
 
 Inputs:
 
 ```csharp
-// inputs can be updated through the JoypadState array
-// here's an example using MonoGame
+// Inputs can be updated through the JoypadState array.
+// Here's an example using a MonoGame implementation.
 GamePadState gamePadState = GamePad.GetState(PlayerIndex.One);
 
 emulator.JoypadState[0] = (gamePadState.DPad.Right == ButtonState.Pressed); // right
@@ -95,4 +89,4 @@ emulator.JoypadState[4] = (gamePadState.Buttons.B == ButtonState.Pressed); // B
 emulator.JoypadState[5] = (gamePadState.Buttons.A == ButtonState.Pressed); // A
 emulator.JoypadState[6] = (gamePadState.Buttons.Back == ButtonState.Pressed); // select
 emulator.JoypadState[7] = (gamePadState.Buttons.Start == ButtonState.Pressed); // start
-```csharp
+```
