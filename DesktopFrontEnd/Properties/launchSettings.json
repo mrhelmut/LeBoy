@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DesktopFrontEnd": {
+      "commandName": "Project",
+      "commandLineArgs": ""
+    }
+  }
+}

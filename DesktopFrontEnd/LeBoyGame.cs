@@ -5,28 +5,32 @@ using LeBoyLib;
 using System.Threading;
 using System.IO;
 
-namespace LeBoy
+namespace DesktopFrontEnd
 {
     /// <summary>
     /// This is the main type for your game.
     /// </summary>
     public class LeBoyGame : Game
     {
-        GraphicsDeviceManager graphics;
-        SpriteBatch spriteBatch;
+        private GraphicsDeviceManager _graphics;
+        private SpriteBatch _spriteBatch;
 
-        GBZ80 emulator = new GBZ80();
-        Thread emulatorThread;
-        Texture2D emulatorBackbuffer;
+        private string _romFilePath;
+
+        private GBZ80 _emulator = new GBZ80();
+        private Thread _emulatorThread;
+        private Texture2D _emulatorBackbuffer;
         
-        public LeBoyGame()
+        public LeBoyGame(string romPath)
         {
-            graphics = new GraphicsDeviceManager(this);
+            _graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
 
-            graphics.PreferredBackBufferWidth = 800;
-            graphics.PreferredBackBufferHeight = 720;
-            graphics.ApplyChanges();
+            _romFilePath = romPath;
+
+            _graphics.PreferredBackBufferWidth = 800;
+            _graphics.PreferredBackBufferHeight = 720;
+            _graphics.ApplyChanges();
 
             Window.AllowUserResizing = true;
         }
@@ -51,34 +55,28 @@ namespace LeBoy
         protected override void LoadContent()
         {
             // Create a new SpriteBatch, which can be used to draw textures.
-            spriteBatch = new SpriteBatch(GraphicsDevice);
+            _spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            emulatorBackbuffer = new Texture2D(GraphicsDevice, 160, 144);
+            _emulatorBackbuffer = new Texture2D(GraphicsDevice, 160, 144);
 
             // loading a rom and starting emulation
-            System.Windows.Forms.OpenFileDialog ofd = new System.Windows.Forms.OpenFileDialog();
-            ofd.DefaultExt = ".gb";
-            ofd.Filter = "ROM files (.gb)|*.gb";
-            ofd.Multiselect = false;
-
-            System.Windows.Forms.DialogResult result = ofd.ShowDialog();
-            if (result == System.Windows.Forms.DialogResult.OK)
+            if (File.Exists(_romFilePath))
             {
-                string filename = ofd.FileName;
-
-                using (FileStream fs = new FileStream(filename, FileMode.Open))
+                using (FileStream fs = new FileStream(_romFilePath, FileMode.Open))
                 {
                     using (BinaryReader br = new BinaryReader(fs))
                     {
                         byte[] rom = new byte[fs.Length];
                         for (int i = 0; i < fs.Length; i++)
                             rom[i] = br.ReadByte();
-                        emulator.Load(rom);
+                        _emulator.Load(rom);
                     }
                 }
 
-                emulatorThread = new Thread(EmulatorWork);
-                emulatorThread.Start();                
+                // initialize emulator thread
+                _keepEmulatorRunning = true;
+                _emulatorThread = new Thread(EmulatorWork);
+                _emulatorThread.Start();                
             }
         }
 
@@ -88,9 +86,9 @@ namespace LeBoy
         /// </summary>
         protected override void UnloadContent()
         {
-            // stopping emulation
-            if (emulatorThread != null && emulatorThread.IsAlive)
-                emulatorThread.Abort();
+            // stopping emulation thread
+            if (_emulatorThread != null && _emulatorThread.IsAlive)
+                _keepEmulatorRunning = false;
         }
 
         /// <summary>
@@ -103,19 +101,19 @@ namespace LeBoy
             GamePadState gamePadState = GamePad.GetState(PlayerIndex.One);
 
             // inputs
-            emulator.JoypadState[0] = (gamePadState.DPad.Right == ButtonState.Pressed);
-            emulator.JoypadState[1] = (gamePadState.DPad.Left == ButtonState.Pressed);
-            emulator.JoypadState[2] = (gamePadState.DPad.Up == ButtonState.Pressed);
-            emulator.JoypadState[3] = (gamePadState.DPad.Down == ButtonState.Pressed);
-            emulator.JoypadState[4] = (gamePadState.Buttons.B == ButtonState.Pressed);
-            emulator.JoypadState[5] = (gamePadState.Buttons.A == ButtonState.Pressed);
-            emulator.JoypadState[6] = (gamePadState.Buttons.Back == ButtonState.Pressed);
-            emulator.JoypadState[7] = (gamePadState.Buttons.Start == ButtonState.Pressed);
+            _emulator.JoypadState[0] = (gamePadState.DPad.Right == ButtonState.Pressed);
+            _emulator.JoypadState[1] = (gamePadState.DPad.Left == ButtonState.Pressed);
+            _emulator.JoypadState[2] = (gamePadState.DPad.Up == ButtonState.Pressed);
+            _emulator.JoypadState[3] = (gamePadState.DPad.Down == ButtonState.Pressed);
+            _emulator.JoypadState[4] = (gamePadState.Buttons.B == ButtonState.Pressed);
+            _emulator.JoypadState[5] = (gamePadState.Buttons.A == ButtonState.Pressed);
+            _emulator.JoypadState[6] = (gamePadState.Buttons.Back == ButtonState.Pressed);
+            _emulator.JoypadState[7] = (gamePadState.Buttons.Start == ButtonState.Pressed);
 
             // upload backbuffer to texture
-            byte[] backbuffer = emulator.GetScreenBuffer();
+            byte[] backbuffer = _emulator.GetScreenBuffer();
             if (backbuffer != null)
-                emulatorBackbuffer.SetData<byte>(backbuffer);
+                _emulatorBackbuffer.SetData<byte>(backbuffer);
 
             base.Update(gameTime);
         }
@@ -148,12 +146,14 @@ namespace LeBoy
             }
 
             // draw backbuffer
-            spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            spriteBatch.Draw(emulatorBackbuffer, bounds, Color.White);
-            spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            _spriteBatch.Draw(_emulatorBackbuffer, bounds, Color.White);
+            _spriteBatch.End();
 
             base.Draw(gameTime);
         }
+
+        private bool _keepEmulatorRunning = false;
         
         private void EmulatorWork()
         {
@@ -162,9 +162,9 @@ namespace LeBoy
             MicroStopwatch s = new MicroStopwatch();
             s.Start();
 
-            while (true)
-            {                                
-                uint cycles = emulator.DecodeAndDispatch();
+            while (_keepEmulatorRunning)
+            {
+                uint cycles = _emulator.DecodeAndDispatch();
 
                 // timer handling
                 // note: there's nothing quite reliable / precise enough in cross-platform .Net

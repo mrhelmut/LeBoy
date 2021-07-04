@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace LeBoy
+namespace DesktopFrontEnd
 {
     public class MicroStopwatch : System.Diagnostics.Stopwatch
     {
