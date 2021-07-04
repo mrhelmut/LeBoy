@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using LeBoyLib;
 using System.Threading;
 using System.IO;
+using System.Diagnostics;
 
 namespace DesktopFrontEnd
 {
@@ -157,31 +158,31 @@ namespace DesktopFrontEnd
         
         private void EmulatorWork()
         {
-            double cpuSecondsElapsed = 0.0f;
+            double emulationElapsed = 0.0f;
+            double lastElapsedTime = 0.0f;
 
-            MicroStopwatch s = new MicroStopwatch();
+            Stopwatch s = new Stopwatch();
             s.Start();
 
             while (_keepEmulatorRunning)
             {
-                uint cycles = _emulator.DecodeAndDispatch();
-
                 // timer handling
-                // note: there's nothing quite reliable / precise enough in cross-platform .Net
+                // note: there's nothing quite reliable / precise enough in cross-platform .NET
                 // so this is quite hack-ish / dirty
-                cpuSecondsElapsed += cycles / GBZ80.ClockSpeed;
-
-                double realSecondsElapsed = s.ElapsedMicroseconds * 1000000;
-
-                if (realSecondsElapsed - cpuSecondsElapsed > 0.0) // dirty wait
+                if (emulationElapsed <= 0.0f)
                 {
-                    realSecondsElapsed = s.ElapsedMicroseconds * 1000000;
+                    uint cycles = _emulator.DecodeAndDispatch();
+                    emulationElapsed += (cycles * Stopwatch.Frequency) / GBZ80.ClockSpeed; // host cpu ticks elapsed
                 }
 
-                if (s.ElapsedMicroseconds > 1000000) // dirty restart every seconds to not loose too many precision
+                long elapsed = s.ElapsedTicks;
+                emulationElapsed -= elapsed - lastElapsedTime;
+                lastElapsedTime = elapsed;
+
+                if (s.ElapsedTicks > Stopwatch.Frequency) // dirty restart every seconds to not loose too many precision
                 {
                     s.Restart();
-                    cpuSecondsElapsed -= 1.0;
+                    lastElapsedTime -= Stopwatch.Frequency;
                 }
             }
         }

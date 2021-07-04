@@ -71,7 +71,7 @@ namespace LeBoyLib
         /// </summary>
         private bool IsHalted = false;
 
-        public const float ClockSpeed = 4194304.0f; // normal GB hz
+        public const double ClockSpeed = 4194304.0; // normal GB hz
 
         #endregion
 
