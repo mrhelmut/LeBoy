@@ -5,6 +5,7 @@ using LeBoyLib;
 using System.Threading;
 using System.IO;
 using System.Diagnostics;
+using Microsoft.Xna.Framework.Audio;
 
 namespace DesktopFrontEnd
 {
@@ -21,7 +22,21 @@ namespace DesktopFrontEnd
         private GBZ80 _emulator = new GBZ80();
         private Thread _emulatorThread;
         private Texture2D _emulatorBackbuffer;
-        
+
+        private DynamicSoundEffectInstance _channel1 = new DynamicSoundEffectInstance(GBZ80.SPUSampleRate, AudioChannels.Stereo);
+        private DynamicSoundEffectInstance _channel2 = new DynamicSoundEffectInstance(GBZ80.SPUSampleRate, AudioChannels.Stereo);
+        private DynamicSoundEffectInstance _channel3 = new DynamicSoundEffectInstance(GBZ80.SPUSampleRate, AudioChannels.Stereo);
+        private DynamicSoundEffectInstance _channel4 = new DynamicSoundEffectInstance(GBZ80.SPUSampleRate, AudioChannels.Stereo);
+
+        private byte[] _audioBuffer1 = new byte[1000000];
+        private int _bufferLength1 = 0;
+        private byte[] _audioBuffer2 = new byte[1000000];
+        private int _bufferLength2 = 0;
+        private byte[] _audioBuffer3 = new byte[1000000];
+        private int _bufferLength3 = 0;
+        private byte[] _audioBuffer4 = new byte[1000000];
+        private int _bufferLength4 = 0;
+
         public LeBoyGame(string romPath)
         {
             _graphics = new GraphicsDeviceManager(this);
@@ -29,9 +44,7 @@ namespace DesktopFrontEnd
 
             _romFilePath = romPath;
 
-            _graphics.PreferredBackBufferWidth = 800;
-            _graphics.PreferredBackBufferHeight = 720;
-            _graphics.ApplyChanges();
+
 
             Window.AllowUserResizing = true;
         }
@@ -44,7 +57,9 @@ namespace DesktopFrontEnd
         /// </summary>
         protected override void Initialize()
         {
-            // TODO: Add your initialization logic here
+            _graphics.PreferredBackBufferWidth = 160 * 4;
+            _graphics.PreferredBackBufferHeight = 144 * 4;
+            _graphics.ApplyChanges();
 
             base.Initialize();
         }
@@ -79,6 +94,11 @@ namespace DesktopFrontEnd
                 _emulatorThread = new Thread(EmulatorWork);
                 _emulatorThread.Start();                
             }
+
+            _channel1.Play();
+            _channel2.Play();
+            _channel3.Play();
+            _channel4.Play();
         }
 
         /// <summary>
@@ -115,6 +135,47 @@ namespace DesktopFrontEnd
             byte[] backbuffer = _emulator.GetScreenBuffer();
             if (backbuffer != null)
                 _emulatorBackbuffer.SetData<byte>(backbuffer);
+
+            lock (_channel1lock)
+            {
+                if (_bufferLength1 > 0)
+                {
+                    byte[] buffer = new byte[_bufferLength1];
+                    System.Array.Copy(_audioBuffer1, buffer, _bufferLength1);
+                    _channel1.SubmitBuffer(buffer);
+                    _bufferLength1 = 0;
+                }
+            }
+            lock(_channel2lock)
+            {
+                if (_bufferLength2 > 0)
+                {
+                    byte[] buffer = new byte[_bufferLength2];
+                    System.Array.Copy(_audioBuffer2, buffer, _bufferLength2);
+                    _channel2.SubmitBuffer(buffer);
+                    _bufferLength2 = 0;
+                }
+            }
+            lock (_channel3lock)
+            {
+                if (_bufferLength3 > 0)
+                {
+                    byte[] buffer = new byte[_bufferLength3];
+                    System.Array.Copy(_audioBuffer3, buffer, _bufferLength3);
+                    _channel3.SubmitBuffer(buffer);
+                    _bufferLength3 = 0;
+                }
+            }
+            lock (_channel4lock)
+            {
+                if (_bufferLength4 > 0)
+                {
+                    byte[] buffer = new byte[_bufferLength4];
+                    System.Array.Copy(_audioBuffer4, buffer, _bufferLength4);
+                    _channel4.SubmitBuffer(buffer);
+                    _bufferLength4 = 0;
+                }
+            }
 
             base.Update(gameTime);
         }
@@ -155,7 +216,11 @@ namespace DesktopFrontEnd
         }
 
         private bool _keepEmulatorRunning = false;
-        
+        private object _channel1lock = new object();
+        private object _channel2lock = new object();
+        private object _channel3lock = new object();
+        private object _channel4lock = new object();
+
         private void EmulatorWork()
         {
             double emulationElapsed = 0.0f;
@@ -173,6 +238,74 @@ namespace DesktopFrontEnd
                 {
                     uint cycles = _emulator.DecodeAndDispatch();
                     emulationElapsed += (cycles * Stopwatch.Frequency) / GBZ80.ClockSpeed; // host cpu ticks elapsed
+
+                    if (_emulator.Channel1Samples > 0)
+                    {
+                        lock (_channel1lock)
+                        {
+                            for (int i = 0; i < _emulator.Channel1Samples; i += 2)
+                            {
+                                _audioBuffer1[_bufferLength1] = (byte)(_emulator.Channel1Buffer[i + 1] & 0x00FF); // low right
+                                _audioBuffer1[_bufferLength1 + 1] = (byte)((_emulator.Channel1Buffer[i + 1] & 0xFF00) >> 8); // high right
+
+                                _audioBuffer1[_bufferLength1 + 2] = (byte)(_emulator.Channel1Buffer[i] & 0x00FF); // low left
+                                _audioBuffer1[_bufferLength1 + 3] = (byte)((_emulator.Channel1Buffer[i] & 0xFF00) >> 8); // high left
+                                _bufferLength1 += 4;
+                            }
+                            _emulator.Channel1Samples = 0;
+                        }
+                    }
+
+                    if (_emulator.Channel2Samples > 0)
+                    {
+                        lock (_channel2lock)
+                        {
+                            for (int i = 0; i < _emulator.Channel2Samples; i += 2)
+                            {
+                                _audioBuffer2[_bufferLength2 ] = (byte)(_emulator.Channel2Buffer[i + 1] & 0x00FF); // low right
+                                _audioBuffer2[_bufferLength2 + 1] = (byte)((_emulator.Channel2Buffer[i + 1] & 0xFF00) >> 8); // high right
+
+                                _audioBuffer2[_bufferLength2 + 2] = (byte)(_emulator.Channel2Buffer[i] & 0x00FF); // low left
+                                _audioBuffer2[_bufferLength2 + 3] = (byte)((_emulator.Channel2Buffer[i] & 0xFF00) >> 8); // high left
+                                _bufferLength2 += 4;
+                            }
+                            _emulator.Channel2Samples = 0;
+                        }
+                    }
+
+                    if (_emulator.Channel3Samples > 0)
+                    {
+                        lock (_channel3lock)
+                        {
+                            for (int i = 0; i < _emulator.Channel3Samples; i += 2)
+                            {
+                                _audioBuffer3[_bufferLength3] = (byte)(_emulator.Channel3Buffer[i + 1] & 0x00FF); // low right
+                                _audioBuffer3[_bufferLength3 + 1] = (byte)((_emulator.Channel3Buffer[i + 1] & 0xFF00) >> 8); // high right
+
+                                _audioBuffer3[_bufferLength3 + 2] = (byte)(_emulator.Channel3Buffer[i] & 0x00FF); // low left
+                                _audioBuffer3[_bufferLength3 + 3] = (byte)((_emulator.Channel3Buffer[i] & 0xFF00) >> 8); // high left
+                                _bufferLength3 += 4;
+                            }
+                            _emulator.Channel3Samples = 0;
+                        }
+                    }
+
+                    if (_emulator.Channel4Samples > 0)
+                    {
+                        lock (_channel4lock)
+                        {
+                            for (int i = 0; i < _emulator.Channel4Samples; i += 2)
+                            {
+                                _audioBuffer4[_bufferLength4] = (byte)(_emulator.Channel4Buffer[i + 1] & 0x00FF); // low right
+                                _audioBuffer4[_bufferLength4 + 1] = (byte)((_emulator.Channel4Buffer[i + 1] & 0xFF00) >> 8); // high right
+
+                                _audioBuffer4[_bufferLength4 + 2] = (byte)(_emulator.Channel4Buffer[i] & 0x00FF); // low left
+                                _audioBuffer4[_bufferLength4 + 3] = (byte)((_emulator.Channel4Buffer[i] & 0xFF00) >> 8); // high left
+                                _bufferLength4 += 4;
+                            }
+                            _emulator.Channel4Samples = 0;
+                        }
+                    }
                 }
 
                 long elapsed = s.ElapsedTicks;

@@ -7,51 +7,396 @@ namespace LeBoyLib
     /// </summary>
     public partial class GBZ80
     {
+        public const int SPUChannelCount = 2;
+        public const int SPUSampleRate = 44100;
+
         // The GB has 4 stereo channels
         // Ch1: Quadrangular wave patterns with sweep and envelope functions.
-        // Ch2: Quadrangular wave patterns with envelope functions.
-        // Ch3: Voluntary wave patterns from wave RAM (4 bits per sample).
-        // Ch4: White noise with an envelope function.
 
+        double Channel1Cycles = 0.0;
 
-        private void Sound_Step()
+        double Channel1Length = 0;
+        int Channel1Coordinate = 0;
+
+        double Channel1SweepTime = 0.0;
+
+        double Channel1VolumeTime = 0.0;
+        int Channel1Volume = 0;
+
+        public short[] Channel1Buffer = new short[10000];
+        public int Channel1Samples = 0;
+
+        // Sound Channel 1 - Tone & Sweep
+        private void Channel1_Step(uint cycles, double SO1Volume, double SO2Volume)
         {
+            // check if Channel 1 can emit
+            byte NR52 = Memory[0xFF26];
+            if ((NR52 & 0b1000_0000) == 0) // all the SPU is disabled
+            {
+                SO1Volume = 0.0;
+                SO2Volume = 0.0;
+            }
 
+            byte NR51 = Memory[0xFF25];
+            if ((NR51 & 0b0000_0001) == 0) // Channel 1 SO1 is disabled
+                SO1Volume = 0.0;
+            if ((NR51 & 0b0001_0000) == 0) // Channel 1 SO2 is disabled
+                SO2Volume = 0.0;
 
-            // Ch2
+            byte NR10 = Memory[0xFF10]; // Sweep register (R/W)
             /*
-            byte NR21 = Memory[0xFF16];
-            float duty = (((NR21 & 0xC0) >> 6) + 1) / 8.0f;
-            int t1 = NR21 & 0x3F;
+            Bit 6-4 - Sweep Time
+            Bit 3   - Sweep Increase/Decrease
+                        0: Addition    (frequency increases)
+                        1: Subtraction (frequency decreases)
+            Bit 2-0 - Number of sweep shift (n: 0-7)
+            */
+            double sweepTime = ((NR10 & 0b0111_0000) >> 5) / 128.0;
+            int sweepIncrease = (NR10 & 0b0000_1000);
+            int sweepShift = (NR10 & 0b0000_0111);
 
-            byte NR22 = Memory[0xFF17];
-            float initialVolume = ((NR22 & 0xF0) >> 4) / 15.0f;
-            bool increasing = (NR22 & 0x8) != 0;
-            int sweeps = NR22 & 0x7;
+            if (Memory.ResetChannel1Sweep)
+            {
+                Memory.ResetChannel1Sweep = false;
+                Channel1SweepTime = 0.0;
+            }
+
+            byte NR11 = Memory[0xFF11]; // Channel 1 Sound Length/Wave Pattern Duty (R/W)
+            /*
+            Bit 7-6 - Wave Pattern Duty (Read/Write)
+            Bit 5-0 - Sound length data (Write Only) (t1: 0-63)
             */
 
-            // Ch4
-            byte NR41 = Memory[0xFF20];
-            byte NR42 = Memory[0xFF21];
-            byte NR43 = Memory[0xFF22];
-            byte NR44 = Memory[0xFF23];
-
-            if ((NR44 & 0x80) != 0)
+            double duty = 0.125;
+            switch ((NR11 & 0b1100_0000) >> 6)
             {
-                Console.WriteLine("boop");
-                Memory[0xFF23] = (byte)(NR44 & ~0x80);
+                case 1: duty = 0.250; break;
+                case 2: duty = 0.500; break;
+                case 3: duty = 0.750; break;
+            }
+
+            double length = (64 - (NR11 & 0b0011_1111)) * (1.0 / 256.0);
+
+            byte NR12 = Memory[0xFF12]; // Channel 1 Volume Envelope (R/W)
+            /*
+            Bit 7-4 - Initial Volume of envelope (0-0Fh) (0=No Sound)
+            Bit 3   - Envelope Direction (0=Decrease, 1=Increase)
+            Bit 2-0 - Number of envelope sweep (n: 0-7)
+                      (If zero, stop envelope operation.)
+            */
+
+            int initialVolume = (NR12 & 0b1111_0000) >> 4;
+            int direction = NR12 & 0b0000_1000;
+            int sweepCount = NR12 & 0b0000_0111;
+
+            if (Memory.ResetChannel1Volume)
+            {
+                // reset envelope
+                Memory.ResetChannel1Volume = false;
+                Channel1Volume = initialVolume;
+                Channel1VolumeTime = 0.0;
+            }
+
+            byte NR13 = Memory[0xFF13]; // Channel 1 Frequency lo data (W)
+            byte NR14 = Memory[0xFF14]; // Channel 1 Frequency hi data (R/W)
+
+            // Bit 2-0 - Frequency's higher 3 bits (x) (Write Only)
+            int frequency = NR13 | ((NR14 & 0b0000_0111) << 8);
+
+            // Bit 7   - Initial (1=Restart Sound)     (Write Only)
+            if (Memory.ResetChannel1Length)
+            {
+                // reset sound
+                Memory.ResetChannel1Length = false;
+                Channel1Length = length;
+                Channel1Coordinate = 0;
+
+                Memory[0xFF26] |= 0b0000_0010;
+            }
+            // Bit 6   - Counter/consecutive selection (Read/Write)
+            //           (1 = Stop output when length in NR21 expires)
+            int consecutive = (NR14 & 0b0100_0000);
+
+
+            // Update synthetizer
+
+            double time = cycles / ClockSpeed;
+
+            // Update sweep
+            if (sweepTime > 0.0)
+            {
+                Channel1SweepTime += time;
+
+                while (Channel1SweepTime >= sweepTime)
+                {
+                    Channel1SweepTime -= sweepTime;
+
+                    int delta = (int)(frequency / Math.Pow(2, sweepShift));
+                    if (sweepIncrease == 0)
+                        delta = -delta;
+                    frequency = frequency + delta;
+                }
+            }
+
+            // Update volume envelope
+            if (sweepCount > 0)
+            {
+                Channel1VolumeTime += time;
+
+                double stepInterval = sweepCount / 64.0;
+                while (Channel1VolumeTime >= stepInterval)
+                {
+                    Channel1VolumeTime -= stepInterval;
+                    if (direction > 0)
+                        Channel1Volume++;
+                    else
+                        Channel1Volume--;
+
+                    // clamp
+                    if (Channel1Volume < 0)
+                        Channel1Volume = 0;
+                    if (Channel1Volume > 15)
+                        Channel1Volume = 15;
+                }
+            }
+
+            double amplitude = Channel1Volume / 15.0;
+
+            // Generate wave
+            Channel1Cycles += cycles;
+
+            double cyclesPerSample = ClockSpeed / SPUSampleRate;
+
+            if (Channel1Cycles >= cyclesPerSample)
+            {
+                Channel1Cycles -= cyclesPerSample;
+
+                if (consecutive == 0 || Channel1Length >= 0.0)
+                {
+                    double period = 1.0 / (double)(131072 / (2048 - frequency));
+
+                    // Get current x coordinate and compute current sample value. 
+                    double x = Channel1Coordinate / (double)SPUSampleRate;
+                    double sample = DutyWave(amplitude, x, period, duty);
+                    // SO1 (right)
+                    Channel1Buffer[Channel1Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    // SO2 (left)
+                    Channel1Buffer[Channel1Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+
+                    Channel1Coordinate = (Channel1Coordinate + 1) % SPUSampleRate;
+                    Channel1Samples += 2;
+                }
+            }
+
+            if (consecutive != 0 && Channel1Length >= 0.0)
+            {
+                Channel1Length -= time;
+                if (Channel1Length < 0.0)
+                    Memory[0xFF26] = (byte)(NR52 & 0b1111_1101);
             }
         }
 
-        private double PulseWave(double time, double frequency, double duty, double amplitude)
+        // Ch2: Quadrangular wave patterns with envelope functions.
+
+        double Channel2Cycles = 0.0;
+
+        double Channel2Length = 0;
+        int Channel2Coordinate = 0;
+
+        double Channel2VolumeTime = 0.0;
+        int Channel2Volume = 0;
+
+        public short[] Channel2Buffer = new short[10000];
+        public int Channel2Samples = 0;
+
+        // Sound Channel 2 - Tone
+        private void Channel2_Step(uint cycles, double SO1Volume, double SO2Volume)
         {
-            double period = 1.0 / frequency;
-            double timeModulusPeriod = time - Math.Floor(time / period) * period;
-            double phase = timeModulusPeriod / period;
-            if (phase <= duty)
-                return amplitude;
-            else
-                return -amplitude;
+            // check if Channel 2 can emit
+            byte NR52 = Memory[0xFF26];
+            if ((NR52 & 0b1000_0000) == 0) // all the SPU is disabled
+            {
+                SO1Volume = 0.0;
+                SO2Volume = 0.0;
+            }
+
+            byte NR51 = Memory[0xFF25];
+            if ((NR51 & 0b0000_0010) == 0) // Channel 2 SO1 is disabled
+                SO1Volume = 0.0;
+            if ((NR51 & 0b0010_0000) == 0) // Channel 2 SO2 is disabled
+                SO2Volume = 0.0;
+
+            // NR20 0xFF15 is unused
+
+            byte NR21 = Memory[0xFF16]; // Channel 2 Sound Length/Wave Pattern Duty (R/W)
+            /*
+            Bit 7-6 - Wave Pattern Duty (Read/Write)
+            Bit 5-0 - Sound length data (Write Only) (t1: 0-63)
+            */
+
+            double duty = 0.125;
+            switch ((NR21 & 0b1100_0000) >> 6)
+            {
+                case 1: duty = 0.250; break;
+                case 2: duty = 0.500; break;
+                case 3: duty = 0.750; break;
+            }
+
+            double length = (64 - (NR21 & 0b0011_1111)) * (1.0 / 256.0);
+
+            byte NR22 = Memory[0xFF17]; // Channel 2 Volume Envelope (R/W)
+            /*
+            Bit 7-4 - Initial Volume of envelope (0-0Fh) (0=No Sound)
+            Bit 3   - Envelope Direction (0=Decrease, 1=Increase)
+            Bit 2-0 - Number of envelope sweep (n: 0-7)
+                      (If zero, stop envelope operation.)
+            */
+
+            int initialVolume = (NR22 & 0b1111_0000) >> 4;
+            int direction = NR22 & 0b0000_1000;
+            int sweepCount = NR22 & 0b0000_0111;
+
+            if (Memory.ResetChannel2Volume)
+            {
+                // reset envelope
+                Memory.ResetChannel2Volume = false;
+                Channel2Volume = initialVolume;
+                Channel2VolumeTime = 0.0;
+            }
+            
+            byte NR23 = Memory[0xFF18]; // Channel 2 Frequency lo data (W)
+            byte NR24 = Memory[0xFF19]; // Channel 2 Frequency hi data (R/W)
+
+            // Bit 2-0 - Frequency's higher 3 bits (x) (Write Only)
+            int frequency = NR23 | ((NR24 & 0b0000_0111) << 8);
+
+            // Bit 7   - Initial (1=Restart Sound)     (Write Only)
+            if (Memory.ResetChannel2Length)
+            {
+                // reset sound
+                Memory.ResetChannel2Length = false;
+                Channel2Length = length;
+                Channel2Coordinate = 0;
+
+                Memory[0xFF26] |= 0b0000_0010;
+            }
+            // Bit 6   - Counter/consecutive selection (Read/Write)
+            //           (1 = Stop output when length in NR21 expires)
+            int consecutive = (NR24 & 0b0100_0000);
+
+
+            // Update synthetizer
+
+            double time = cycles / ClockSpeed;
+
+            // Update volume envelope
+            if (sweepCount > 0)
+            {
+                Channel2VolumeTime += time;
+
+                double stepInterval = sweepCount / 64.0;
+                while (Channel2VolumeTime >= stepInterval)
+                {
+                    Channel2VolumeTime -= stepInterval;
+                    if (direction > 0)
+                        Channel2Volume++;
+                    else
+                        Channel2Volume--;
+
+                    // clamp
+                    if (Channel2Volume < 0)
+                        Channel2Volume = 0;
+                    if (Channel2Volume > 15)
+                        Channel2Volume = 15;
+                }
+            }
+
+            double amplitude = Channel2Volume / 15.0;
+
+            // Generate wave
+            Channel2Cycles += cycles;
+
+            double cyclesPerSample = ClockSpeed / SPUSampleRate;
+
+            if (Channel2Cycles >= cyclesPerSample)
+            {
+                Channel2Cycles -= cyclesPerSample;
+
+                if (consecutive == 0 || Channel2Length >= 0.0)
+                {
+                    double period = 1.0 / (double)(131072 / (2048 - frequency));
+
+                    // Get current x coordinate and compute current sample value. 
+                    double x = Channel2Coordinate / (double)SPUSampleRate;
+                    double sample = DutyWave(amplitude, x, period, duty);
+                    // SO1 (right)
+                    Channel2Buffer[Channel2Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    // SO2 (left)
+                    Channel2Buffer[Channel2Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+
+                    Channel2Coordinate = (Channel2Coordinate + 1) % SPUSampleRate;
+                    Channel2Samples += 2;
+                }
+            }
+
+            if (consecutive != 0 && Channel2Length >= 0.0)
+            {
+                Channel2Length -= time;
+                if (Channel2Length < 0.0)
+                    Memory[0xFF26] = (byte)(NR52 & 0b1111_1101);
+            }
+        }
+
+        // Ch3: Voluntary wave patterns from wave RAM (4 bits per sample).
+
+        public short[] Channel3Buffer = new short[10000];
+        public int Channel3Samples = 0;
+
+        private void Channel3_Step(uint cycles, double SO1Volume, double SO2Volume)
+        {
+
+        }
+
+        // Ch4: White noise with an envelope function.
+
+        public short[] Channel4Buffer = new short[10000];
+        public int Channel4Samples = 0;
+
+        private void Channel4_Step(uint cycles, double SO1Volume, double SO2Volume)
+        {
+
+        }
+
+        private void Sound_Step(uint cycles)
+        {
+            // SPU global state
+            byte NR50 = Memory[0xFF24]; // Channel control / ON-OFF / Volume (R/W)
+            /*
+            Bit 7   - Output Vin to SO2 terminal (1=Enable)
+            Bit 6-4 - SO2 output level (volume)  (0-7)
+            Bit 3   - Output Vin to SO1 terminal (1=Enable)
+            Bit 2-0 - SO1 output level (volume)  (0-7)
+            */
+            double SO1Volume = (NR50 & 0b0000_0111) / 7.0;
+            double SO2Volume = ((NR50 & 0b0111_0000) >> 4) / 7.0;
+
+            Channel1_Step(cycles, SO1Volume, SO2Volume);
+            Channel2_Step(cycles, SO1Volume, SO2Volume);
+            Channel3_Step(cycles, SO1Volume, SO2Volume);
+            Channel4_Step(cycles, SO1Volume, SO2Volume);
+        }
+
+        private double DutyWave(double amplitude, double x, double period, double duty)
+        {
+            // Pulse waves with a duty can be constructed by subtracting a saw wave from the same but shifted saw wave.
+            double saw1 = -2 * amplitude / Math.PI * Math.Atan(Cot(x * Math.PI / period));
+            double saw2 = -2 * amplitude / Math.PI * Math.Atan(Cot(x * Math.PI / period - (1 - duty) * Math.PI));
+            return saw1 - saw2;
+        }
+
+        private static double Cot(double x)
+        {
+            return 1 / Math.Tan(x);
         }
     }
 }

@@ -124,6 +124,13 @@ namespace LeBoyLib
         /// </summary>
         public bool IsInBIOS = true;
 
+        public bool ResetChannel1Sweep = false;
+        public bool ResetChannel1Volume = false;
+        public bool ResetChannel1Length = false;
+
+        public bool ResetChannel2Volume = false;
+        public bool ResetChannel2Length = false;
+
         /// <summary>
         /// [] overload to access the general memory
         /// - Preserve memory ghosting between C000-DDFF and E000-FDFF
@@ -278,12 +285,46 @@ namespace LeBoyLib
                         }
                         return;
 
+                    case 0xFF00: // I/O gamepad has 4 read-only bits
+                        Memory[0xFF00] = (byte)((value & 0xF0) | (Memory[0xFF00] & 0x0F));
+                        return;
+
                     case 0xFF04: // DIV register, reset if written to
                         Memory[address] = 0;
                         return;
 
-                    case 0xFF00: // I/O gamepad has 4 read-only bits
-                        Memory[0xFF00] = (byte)((value & 0xF0) | (Memory[0xFF00] & 0x0F));
+                    case 0xFF10: // NR10 Channel 1 Sweep register (R/W)
+                        Memory[address] = value;
+                        // should reset sweep
+                        ResetChannel1Sweep = true;
+                        return;
+
+                    case 0xFF12: // NR12 Channel 1 Volume Envelope (R/W)
+                        Memory[address] = value;
+                        // should reset sweep
+                        ResetChannel1Volume = true;
+                        return;
+
+                    case 0xFF14: // NR14 Channel 1 Frequency hi data (R/W)
+                        Memory[address] = value;
+
+                        if ((value & 0b1000_0000) != 0)
+                            // should reset length
+                            ResetChannel1Length = true;
+                        return;
+
+                    case 0xFF17: // NR22 Channel 2 Volume Envelope (R/W)
+                        Memory[address] = value;
+                        // should reset volume
+                        ResetChannel2Volume = true;
+                        return;
+
+                    case 0xFF19: // NR24 Channel 2 Frequency hi data (R/W)
+                        Memory[address] = value;
+                        
+                        if ((value & 0b1000_0000) != 0)
+                            // should reset length
+                            ResetChannel2Length = true;
                         return;
 
                     case 0xFF46: // DMA Transfer
