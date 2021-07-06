@@ -7,7 +7,6 @@ namespace LeBoyLib
     /// </summary>
     public partial class GBZ80
     {
-        public const int SPUChannelCount = 2;
         public const int SPUSampleRate = 44100;
 
         // The GB has 4 stereo channels
@@ -349,12 +348,105 @@ namespace LeBoyLib
 
         // Ch3: Voluntary wave patterns from wave RAM (4 bits per sample).
 
+        double Channel3Cycles = 0.0;
+
+        int Channel3Coordinate = 0;
+
         public short[] Channel3Buffer = new short[10000];
         public int Channel3Samples = 0;
 
+        bool Channel3TickTock;
+
         private void Channel3_Step(uint cycles, double SO1Volume, double SO2Volume)
         {
+            // check if Channel 3 can emit
+            byte NR52 = Memory[0xFF26];
+            if ((NR52 & 0b1000_0000) == 0) // all the SPU is disabled
+            {
+                SO1Volume = 0.0;
+                SO2Volume = 0.0;
+            }
 
+            byte NR51 = Memory[0xFF25];
+            if ((NR51 & 0b0000_0100) == 0) // Channel 3 SO1 is disabled
+                SO1Volume = 0.0;
+            if ((NR51 & 0b0100_0000) == 0) // Channel 3 SO2 is disabled
+                SO2Volume = 0.0;
+
+            byte NR30 = Memory[0xFF1A]; // Channel 3 Sound on/off (R/W)
+            /*
+            Bit 7 - Sound Channel 3 Off  (0=Stop, 1=Playback)  (Read/Write)
+            */
+
+            int playing = (NR30 & 0b1000_0000);
+
+            byte NR31 = Memory[0xFF1B]; // Channel 3 Sound Length
+            /*
+            Bit 7-0 - Sound length (t1: 0 - 255)
+            */
+
+            double length = (256 - NR31) * (1.0 / 256.0);
+
+            byte NR32 = Memory[0xFF1C]; // Channel 3 Select output level (R/W)
+            /*
+            Bits 6-5 - Select output level (Read/Write)
+            */
+
+            double level = 0.0;
+            switch ((NR32 & 0b0110_0000) >> 5)
+            {
+                case 1: level = 1.0; break;
+                case 2: level = 0.5; break;
+                case 3: level = 0.25; break;
+            }
+
+            byte NR33 = Memory[0xFF1D]; // Channel 3 Frequency’s lower data (W)
+            byte NR34 = Memory[0xFF1E]; // Channel 3 Frequency’s higher data (R/W)
+
+            // Bit 2-0 - Frequency's higher 3 bits (x) (Write Only)
+            int frequency = NR33 | ((NR34 & 0b0000_0111) << 8);
+
+            // Update synthetizer
+
+            double time = cycles / ClockSpeed;
+
+            // Generate wave
+            Channel3Cycles += cycles;
+
+            double cyclesPerSample = ClockSpeed / SPUSampleRate;
+
+            if (Channel3Cycles >= cyclesPerSample)
+            {
+                Channel3Cycles -= cyclesPerSample;
+
+                double period = 1.0 / (double)(65536 / (2048 - frequency));
+                int intervalSampleCount = (int)(period * SPUSampleRate);
+
+                if (intervalSampleCount > 0 && playing != 0)
+                {
+                    
+
+                    // Get current x coordinate and compute current sample value. 
+                    int waveRamCoordinate = (int)(Channel3Coordinate / (double)intervalSampleCount * 16);
+                    int waveDataSample = Channel3TickTock
+                            ? (Memory[0xFF30 + waveRamCoordinate] & 0xF)
+                            : ((Memory[0xFF30 + waveRamCoordinate] >> 4) & 0xF);
+                    double sample = level * (waveDataSample - 7) / 15.0;
+                    // SO1 (right)
+                    Channel3Buffer[Channel3Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    // SO2 (left)
+                    Channel3Buffer[Channel3Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+
+                    Channel3Samples += 2;
+
+                    Channel3Coordinate++;
+                    if (Channel3Coordinate >= intervalSampleCount)
+                    {
+                        Channel3TickTock = !Channel3TickTock;
+                        Channel3Coordinate = 0;
+                    }
+                }
+            }
         }
 
         // Ch4: White noise with an envelope function.
