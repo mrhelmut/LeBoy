@@ -15,14 +15,14 @@ What's missing and known issues
 
 LeBoy is not yet complete. Here's what's currently missing:
 
-- *Sound* is not implemented yet;
 - *Real time clock (RTC)* support is absent and queries to clock registers will return 0;
-- *GBC and SGB* are not supported, only the base GB (DMG) is fully supported (which is the priority of the project);
 - *Memory Bank Controllers (MBCs)* are partially implemented (only MBC1, MBC2, MBC3, and MC5 are supported, without RTC support).
+- *GBC and SGB* are not supported, only the base GB (DMG) is fully supported (which is the priority of the project);
 
 Known issues:
 
 - *OAM priority and read/write*: OAM emulation is not quite accurate, some sprites have wrong priorities and this may result in sprites not displaying, or being displayed above/under other elements.
+- *Sound issues*: SPU emulation seems rusty, there must be a bunch of inaccuracies, quite possibly in regard to the timing/sampling and streaming to the front-end.
 
 ----------
 
@@ -89,4 +89,10 @@ emulator.JoypadState[4] = (gamePadState.Buttons.B == ButtonState.Pressed); // B
 emulator.JoypadState[5] = (gamePadState.Buttons.A == ButtonState.Pressed); // A
 emulator.JoypadState[6] = (gamePadState.Buttons.Back == ButtonState.Pressed); // select
 emulator.JoypadState[7] = (gamePadState.Buttons.Start == ButtonState.Pressed); // start
+```
+
+Sound:
+
+```
+Documentation pending because the public sound API is not satisfying yet.
 ```
