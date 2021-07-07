@@ -131,6 +131,10 @@ namespace LeBoyLib
         public bool ResetChannel2Volume = false;
         public bool ResetChannel2Length = false;
 
+        public bool ResetChannel4Volume = false;
+        public bool ResetChannel4Length = false;
+        public bool ResetChannel4Clock = false;
+
         /// <summary>
         /// [] overload to access the general memory
         /// - Preserve memory ghosting between C000-DDFF and E000-FDFF
@@ -325,6 +329,26 @@ namespace LeBoyLib
                         if ((value & 0b1000_0000) != 0)
                             // should reset length
                             ResetChannel2Length = true;
+                        return;
+
+                    case 0xFF20: // NR41 Channel 4 Sound Length (R/W)
+                        Memory[address] = value;
+
+                        if ((value & 0b1000_0000) != 0)
+                            // should reset length
+                            ResetChannel4Length = true;
+                        return;
+
+                    case 0xFF21: // NR42 Channel 4 Volume Envelope (R/W)
+                        Memory[address] = value;
+                        // should reset volume
+                        ResetChannel4Volume = true;
+                        return;
+
+                    case 0xFF22: // NR43 Channel 4 Polynomial Counter (R/W)
+                        Memory[address] = value;
+                        // should reset clock
+                        ResetChannel4Clock = true;
                         return;
 
                     case 0xFF46: // DMA Transfer

@@ -110,7 +110,7 @@ namespace LeBoyLib
                 Channel1Length = length;
                 Channel1Coordinate = 0;
 
-                Memory[0xFF26] |= 0b0000_0010;
+                Memory[0xFF26] |= 0b0000_0001;
             }
             // Bit 6   - Counter/consecutive selection (Read/Write)
             //           (1 = Stop output when length in NR21 expires)
@@ -191,7 +191,7 @@ namespace LeBoyLib
             {
                 Channel1Length -= time;
                 if (Channel1Length < 0.0)
-                    Memory[0xFF26] = (byte)(NR52 & 0b1111_1101);
+                    Memory[0xFF26] = (byte)(NR52 & 0b1111_1110);
             }
         }
 
@@ -451,12 +451,174 @@ namespace LeBoyLib
 
         // Ch4: White noise with an envelope function.
 
+        double Channel4Cycles = 0.0;
+
+        double Channel4Length = 0;
+
+        double Channel4VolumeTime = 0.0;
+        int Channel4Volume = 0;
+
+        short PolynomialState = 0x7F;
+
+        double Channel4PolynomialCycles = 0.0;
+
         public short[] Channel4Buffer = new short[10000];
         public int Channel4Samples = 0;
 
         private void Channel4_Step(uint cycles, double SO1Volume, double SO2Volume)
         {
+            // check if Channel 4 can emit
+            byte NR52 = Memory[0xFF26];
+            if ((NR52 & 0b1000_0000) == 0) // all the SPU is disabled
+            {
+                SO1Volume = 0.0;
+                SO2Volume = 0.0;
+            }
 
+            byte NR51 = Memory[0xFF25];
+            if ((NR51 & 0b0000_1000) == 0) // Channel 4 SO1 is disabled
+                SO1Volume = 0.0;
+            if ((NR51 & 0b1000_0000) == 0) // Channel 4 SO2 is disabled
+                SO2Volume = 0.0;
+
+            // NR40 0xFF15 is unused
+
+            byte NR40 = Memory[0xFF20]; // Channel 4 Sound Length (R/W)
+            /*
+            Bit 5-0 - Sound length data (t1: 0-63)
+            */
+
+            double length = (64 - (NR40 & 0b0011_1111)) * (1.0 / 256.0);
+
+            byte NR41 = Memory[0xFF21]; // Channel 4 Volume Envelope (R/W)
+            /*
+            Bit 7-4 - Initial Volume of envelope (0-0Fh) (0=No Sound)
+            Bit 3   - Envelope Direction (0=Decrease, 1=Increase)
+            Bit 2-0 - Number of envelope sweep (n: 0-7)
+                      (If zero, stop envelope operation.)
+            */
+
+            int initialVolume = (NR41 & 0b1111_0000) >> 4;
+            int direction = NR41 & 0b0000_1000;
+            int sweepCount = NR41 & 0b0000_0111;
+
+            if (Memory.ResetChannel4Volume)
+            {
+                // reset envelope
+                Memory.ResetChannel4Volume = false;
+                Channel4Volume = initialVolume;
+                Channel4VolumeTime = 0.0;
+            }
+
+            byte NR43 = Memory[0xFF22]; // Channel 4 Polynomial Counter (R/W)
+            /*
+            Bit 7-4 - Shift Clock Frequency (s)
+            Bit 3   - Counter Step/Width (0=15 bits, 1=7 bits)
+            Bit 2-0 - Dividing Ratio of Frequencies (r)
+            */
+
+            double shiftClockFrequency = (NR43 & 0b1111_0000) >> 4;
+            int counterStep = NR43 & 0b0000_1000;
+            double dividingRatio = NR43 & 0b0000_0111;
+            if (dividingRatio == 0.0)
+                dividingRatio = 0.5;
+            // Frequency = 524288 Hz / r / 2^(s+1) ;For r=0 assume r=0.5 instead
+            double frequency = 524288.0 / dividingRatio / Math.Pow(2.0, shiftClockFrequency + 1.0);
+
+            if (Memory.ResetChannel4Clock)
+            {
+                Memory.ResetChannel4Clock = false;
+                PolynomialState = (short)(counterStep != 0 ? 0x7F : 0x7FFF);
+                Channel4PolynomialCycles = 0.0;
+            }
+
+            byte NR44 = Memory[0xFF23]; // Channel 4 Counter/consecutive; Inital (R/W)
+
+            // Bit 7   - Initial (1=Restart Sound)     (Write Only)
+            if (Memory.ResetChannel4Length)
+            {
+                // reset sound
+                Memory.ResetChannel4Length = false;
+                Channel4Length = length;
+
+                Memory[0xFF26] |= 0b0000_1000;
+            }
+            // Bit 6   - Counter/consecutive selection (Read/Write)
+            //           (1 = Stop output when length in NR21 expires)
+            int consecutive = (NR44 & 0b0100_0000);
+
+
+            // Update synthetizer
+
+            double time = cycles / ClockSpeed;
+
+            // Update volume envelope
+            if (sweepCount > 0)
+            {
+                Channel4VolumeTime += time;
+
+                double stepInterval = sweepCount / 64.0;
+                while (Channel4VolumeTime >= stepInterval)
+                {
+                    Channel4VolumeTime -= stepInterval;
+                    if (direction > 0)
+                        Channel4Volume++;
+                    else
+                        Channel4Volume--;
+
+                    // clamp
+                    if (Channel4Volume < 0)
+                        Channel4Volume = 0;
+                    if (Channel4Volume > 15)
+                        Channel4Volume = 15;
+                }
+            }
+
+            double amplitude = Channel4Volume / 15.0;
+
+            // Generate wave
+            Channel4PolynomialCycles += cycles;
+
+            double polynomialCyclesPerSample = ClockSpeed / frequency;
+
+            if (Channel4PolynomialCycles >= polynomialCyclesPerSample)
+            {
+                Channel4PolynomialCycles -= polynomialCyclesPerSample;
+
+                byte nextBit = (byte)(((PolynomialState >> 1) & 1) ^ (PolynomialState & 1));
+                PolynomialState >>= 1;
+                PolynomialState |= (short)(nextBit << (counterStep != 0 ? 6 : 14));
+            }
+
+
+            Channel4Cycles += cycles;
+
+            double cyclesPerSample = ClockSpeed / SPUSampleRate;
+
+            if (Channel4Cycles >= cyclesPerSample)
+            {
+                Channel4Cycles -= cyclesPerSample;
+
+                if (consecutive == 0 || Channel4Length >= 0.0)
+                {
+                    double sample = 0.0;
+                    if ((PolynomialState & 1) == 1)
+                        sample = amplitude;
+                    // SO1 (right)
+                    Channel4Buffer[Channel4Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    // SO2 (left)
+                    Channel4Buffer[Channel4Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+
+                    Channel4Samples += 2;
+                }
+            }
+
+            if (consecutive != 0 && Channel4Length >= 0.0)
+            {
+                Channel4Length -= time;
+                if (Channel4Length < 0.0)
+                    Memory[0xFF26] = (byte)(NR52 & 0b1111_0111);
+            }
         }
 
         private void Sound_Step(uint cycles)
