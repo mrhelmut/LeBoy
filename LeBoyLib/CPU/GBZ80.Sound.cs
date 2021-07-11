@@ -50,7 +50,7 @@ namespace LeBoyLib
                         1: Subtraction (frequency decreases)
             Bit 2-0 - Number of sweep shift (n: 0-7)
             */
-            double sweepTime = ((NR10 & 0b0111_0000) >> 5) / 128.0;
+            double sweepTime = ((NR10 & 0b0111_0000) >> 4) / 128.0;
             int sweepIncrease = (NR10 & 0b0000_1000);
             int sweepShift = (NR10 & 0b0000_0111);
 
@@ -178,9 +178,9 @@ namespace LeBoyLib
                     double x = Channel1Coordinate / (double)SPUSampleRate;
                     double sample = DutyWave(amplitude, x, period, duty);
                     // SO1 (right)
-                    Channel1Buffer[Channel1Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    Channel1Buffer[Channel1Samples] = (short)(0.25 * sample * SO1Volume * short.MaxValue);
                     // SO2 (left)
-                    Channel1Buffer[Channel1Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+                    Channel1Buffer[Channel1Samples + 1] = (short)(0.25 * sample * SO2Volume * short.MaxValue);
 
                     Channel1Coordinate = (Channel1Coordinate + 1) % SPUSampleRate;
                     Channel1Samples += 2;
@@ -329,9 +329,9 @@ namespace LeBoyLib
                     double x = Channel2Coordinate / (double)SPUSampleRate;
                     double sample = DutyWave(amplitude, x, period, duty);
                     // SO1 (right)
-                    Channel2Buffer[Channel2Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    Channel2Buffer[Channel2Samples] = (short)(0.25 * sample * SO1Volume * short.MaxValue);
                     // SO2 (left)
-                    Channel2Buffer[Channel2Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+                    Channel2Buffer[Channel2Samples + 1] = (short)(0.25 * sample * SO2Volume * short.MaxValue);
 
                     Channel2Coordinate = (Channel2Coordinate + 1) % SPUSampleRate;
                     Channel2Samples += 2;
@@ -433,9 +433,9 @@ namespace LeBoyLib
                             : ((Memory[0xFF30 + waveRamCoordinate] >> 4) & 0xF);
                     double sample = level * (waveDataSample - 7) / 15.0;
                     // SO1 (right)
-                    Channel3Buffer[Channel3Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    Channel3Buffer[Channel3Samples] = (short)(0.25 * sample * SO1Volume * short.MaxValue);
                     // SO2 (left)
-                    Channel3Buffer[Channel3Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+                    Channel3Buffer[Channel3Samples + 1] = (short)(0.25 * sample * SO2Volume * short.MaxValue);
 
                     Channel3Samples += 2;
 
@@ -604,10 +604,11 @@ namespace LeBoyLib
                     double sample = 0.0;
                     if ((PolynomialState & 1) == 1)
                         sample = amplitude;
+
                     // SO1 (right)
-                    Channel4Buffer[Channel4Samples] = (short)(sample * SO1Volume * short.MaxValue);
+                    Channel4Buffer[Channel4Samples] = (short)(0.25 * sample * SO1Volume * short.MaxValue);
                     // SO2 (left)
-                    Channel4Buffer[Channel4Samples + 1] = (short)(sample * SO2Volume * short.MaxValue);
+                    Channel4Buffer[Channel4Samples + 1] = (short)(0.25 * sample * SO2Volume * short.MaxValue);
 
                     Channel4Samples += 2;
                 }
@@ -642,15 +643,10 @@ namespace LeBoyLib
 
         private double DutyWave(double amplitude, double x, double period, double duty)
         {
-            // Pulse waves with a duty can be constructed by subtracting a saw wave from the same but shifted saw wave.
-            double saw1 = -2 * amplitude / Math.PI * Math.Atan(Cot(x * Math.PI / period));
-            double saw2 = -2 * amplitude / Math.PI * Math.Atan(Cot(x * Math.PI / period - (1 - duty) * Math.PI));
-            return saw1 - saw2;
-        }
+            x %= period;
+            x /= period;
 
-        private static double Cot(double x)
-        {
-            return 1 / Math.Tan(x);
+            return (x <= duty ? amplitude : -amplitude);
         }
     }
 }

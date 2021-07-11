@@ -245,11 +245,11 @@ namespace DesktopFrontEnd
                         {
                             for (int i = 0; i < _emulator.Channel1Samples; i += 2)
                             {
-                                _audioBuffer1[_bufferLength1] = (byte)(_emulator.Channel1Buffer[i + 1] & 0x00FF); // low right
-                                _audioBuffer1[_bufferLength1 + 1] = (byte)((_emulator.Channel1Buffer[i + 1] & 0xFF00) >> 8); // high right
+                                _audioBuffer1[_bufferLength1] = (byte)(_emulator.Channel1Buffer[i + 1] & 0x00FF); // low left
+                                _audioBuffer1[_bufferLength1 + 1] = (byte)((_emulator.Channel1Buffer[i + 1] & 0xFF00) >> 8); // high left
 
-                                _audioBuffer1[_bufferLength1 + 2] = (byte)(_emulator.Channel1Buffer[i] & 0x00FF); // low left
-                                _audioBuffer1[_bufferLength1 + 3] = (byte)((_emulator.Channel1Buffer[i] & 0xFF00) >> 8); // high left
+                                _audioBuffer1[_bufferLength1 + 2] = (byte)(_emulator.Channel1Buffer[i] & 0x00FF); // low right
+                                _audioBuffer1[_bufferLength1 + 3] = (byte)((_emulator.Channel1Buffer[i] & 0xFF00) >> 8); // high right
                                 _bufferLength1 += 4;
                             }
                             _emulator.Channel1Samples = 0;
@@ -262,11 +262,11 @@ namespace DesktopFrontEnd
                         {
                             for (int i = 0; i < _emulator.Channel2Samples; i += 2)
                             {
-                                _audioBuffer2[_bufferLength2 ] = (byte)(_emulator.Channel2Buffer[i + 1] & 0x00FF); // low right
-                                _audioBuffer2[_bufferLength2 + 1] = (byte)((_emulator.Channel2Buffer[i + 1] & 0xFF00) >> 8); // high right
+                                _audioBuffer2[_bufferLength2 ] = (byte)(_emulator.Channel2Buffer[i + 1] & 0x00FF); // low left
+                                _audioBuffer2[_bufferLength2 + 1] = (byte)((_emulator.Channel2Buffer[i + 1] & 0xFF00) >> 8); // high left
 
-                                _audioBuffer2[_bufferLength2 + 2] = (byte)(_emulator.Channel2Buffer[i] & 0x00FF); // low left
-                                _audioBuffer2[_bufferLength2 + 3] = (byte)((_emulator.Channel2Buffer[i] & 0xFF00) >> 8); // high left
+                                _audioBuffer2[_bufferLength2 + 2] = (byte)(_emulator.Channel2Buffer[i] & 0x00FF); // low right
+                                _audioBuffer2[_bufferLength2 + 3] = (byte)((_emulator.Channel2Buffer[i] & 0xFF00) >> 8); // high right
                                 _bufferLength2 += 4;
                             }
                             _emulator.Channel2Samples = 0;
@@ -279,11 +279,11 @@ namespace DesktopFrontEnd
                         {
                             for (int i = 0; i < _emulator.Channel3Samples; i += 2)
                             {
-                                _audioBuffer3[_bufferLength3] = (byte)(_emulator.Channel3Buffer[i + 1] & 0x00FF); // low right
-                                _audioBuffer3[_bufferLength3 + 1] = (byte)((_emulator.Channel3Buffer[i + 1] & 0xFF00) >> 8); // high right
+                                _audioBuffer3[_bufferLength3] = (byte)(_emulator.Channel3Buffer[i + 1] & 0x00FF); // low left
+                                _audioBuffer3[_bufferLength3 + 1] = (byte)((_emulator.Channel3Buffer[i + 1] & 0xFF00) >> 8); // high left
 
-                                _audioBuffer3[_bufferLength3 + 2] = (byte)(_emulator.Channel3Buffer[i] & 0x00FF); // low left
-                                _audioBuffer3[_bufferLength3 + 3] = (byte)((_emulator.Channel3Buffer[i] & 0xFF00) >> 8); // high left
+                                _audioBuffer3[_bufferLength3 + 2] = (byte)(_emulator.Channel3Buffer[i] & 0x00FF); // low right
+                                _audioBuffer3[_bufferLength3 + 3] = (byte)((_emulator.Channel3Buffer[i] & 0xFF00) >> 8); // high right
                                 _bufferLength3 += 4;
                             }
                             _emulator.Channel3Samples = 0;
@@ -296,11 +296,11 @@ namespace DesktopFrontEnd
                         {
                             for (int i = 0; i < _emulator.Channel4Samples; i += 2)
                             {
-                                _audioBuffer4[_bufferLength4] = (byte)(_emulator.Channel4Buffer[i + 1] & 0x00FF); // low right
-                                _audioBuffer4[_bufferLength4 + 1] = (byte)((_emulator.Channel4Buffer[i + 1] & 0xFF00) >> 8); // high right
+                                _audioBuffer4[_bufferLength4] = (byte)(_emulator.Channel4Buffer[i + 1] & 0x00FF); // low left
+                                _audioBuffer4[_bufferLength4 + 1] = (byte)((_emulator.Channel4Buffer[i + 1] & 0xFF00) >> 8); // high left
 
-                                _audioBuffer4[_bufferLength4 + 2] = (byte)(_emulator.Channel4Buffer[i] & 0x00FF); // low left
-                                _audioBuffer4[_bufferLength4 + 3] = (byte)((_emulator.Channel4Buffer[i] & 0xFF00) >> 8); // high left
+                                _audioBuffer4[_bufferLength4 + 2] = (byte)(_emulator.Channel4Buffer[i] & 0x00FF); // low right
+                                _audioBuffer4[_bufferLength4 + 3] = (byte)((_emulator.Channel4Buffer[i] & 0xFF00) >> 8); // high right
                                 _bufferLength4 += 4;
                             }
                             _emulator.Channel4Samples = 0;
